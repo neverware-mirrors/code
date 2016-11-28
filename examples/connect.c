@@ -24,6 +24,7 @@
 #include <libgen.h>
 #include <getopt.h>
 #include <string.h>
+#include <errno.h>
 
 #include "common.h"
 #include "util.h"
@@ -34,34 +35,41 @@ LIBMTP_folder_t *folders;
 LIBMTP_file_t *files;
 LIBMTP_mtpdevice_t *device;
 
-static void
+static int
 split_arg(char * argument, char ** part1, char ** part2)
 {
   char *sepp;
+  size_t arg_shift;
   *part1 = NULL;
   *part2 = NULL;
 
-  sepp = argument + strcspn(argument, ",");
+  arg_shift = strcspn(argument, ",");
+  if (arg_shift == strlen(argument))
+    return -EINVAL;
+
+  sepp = argument + arg_shift;
   sepp[0] = '\0';
   *part1 = argument;
   *part2 = sepp+1;
+  return 0;
 }
 
 static void
 usage(void)
 {
-  printf("Usage: connect <command1> <command2>\n");
-  printf("Commands: --delete [filename]\n");
-  printf("          --sendfile [source] [destination]\n");
-  printf("          --sendtrack [source] [destination]\n");
-  printf("          --getfile [source] [destination]\n");
-  printf("          --newfolder [foldername]\n");
+  printf("Usage: mtp-connect [command1] [command2] ...\n");
+  printf("Commands: --delete filename\n");
+  printf("          --sendfile source,destination\n");
+  printf("          --sendtrack source,destination\n");
+  printf("          --getfile source,destination\n");
+  printf("          --newfolder foldername\n");
 }
 
 
 int main (int argc, char **argv)
 {
   int ret = 0;
+  int two_args = 0;
 
   checklang();
 
@@ -111,30 +119,45 @@ int main (int argc, char **argv)
       char *arg1, *arg2;
       switch (c) {
       case 'd':
-        printf("Delete %s\n",optarg);
+        printf("Delete %s\n", optarg);
         ret = delfile_function(optarg);
         break;
 
       case 'f':
-        printf("Send file %s\n",optarg);
-        split_arg(optarg,&arg1,&arg2);
-        ret = sendfile_function(arg1,arg2);
+        printf("Send file %s\n", optarg);
+        ret = split_arg(optarg, &arg1, &arg2);
+        if (ret < 0) {
+          fprintf(stderr, "Invalid argument: %s\n\n", optarg);
+          usage();
+          return -ret;
+        }
+        ret = sendfile_function(arg1, arg2);
         break;
 
       case 'g':
-        printf("Get file %s\n",optarg);
-        split_arg(optarg,&arg1,&arg2);
+        printf("Get file %s\n", optarg);
+        ret = split_arg(optarg, &arg1, &arg2);
+        if (ret < 0) {
+          fprintf(stderr, "Invalid argument: %s\n\n", optarg);
+          usage();
+          return -ret;
+        }
         ret = getfile_function(arg1,arg2);
         break;
 
       case 'n':
-        printf("New folder %s\n",optarg);
+        printf("New folder %s\n", optarg);
         ret = newfolder_function(optarg);
         break;
 
       case 't':
-        printf("Send track %s\n",optarg);
-        split_arg(optarg,&arg1,&arg2);
+        printf("Send track %s\n", optarg);
+        ret = split_arg(optarg, &arg1, &arg2);
+        if (ret < 0) {
+          fprintf(stderr, "Invalid argument: %s\n\n", optarg);
+          usage();
+          return -ret;
+        }
         ret = sendtrack_function(arg1,arg2,NULL,NULL,NULL,NULL,NULL,NULL,0,0,0,0,0);
         break;
       }
